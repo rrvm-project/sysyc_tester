@@ -120,7 +120,7 @@ async fn main() -> std::io::Result<()> {
             .service(from_stream)
             .service(test)
     })
-    .bind(("127.0.0.1", 12345))?
+    .bind(("0.0.0.0", 12345))?
     .run()
     .await
 }
