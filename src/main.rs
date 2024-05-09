@@ -86,16 +86,18 @@ async fn test(
     )?;
 
     let func_output = run_command(
-        "python",
+        "python3",
         &["test.py", "-t", "./testcases/functional", "-b"],
         &format!("./{commit_hash}/project-eval"),
     )?;
 
     let perf_output = run_command(
-        "python",
+        "python3",
         &["test.py", "-t", "./testcases/performance", "-b"],
         &format!("./{commit_hash}/project-eval"),
     )?;
+
+    run_command("rm", &["-rf", &format!("./{commit_hash}")], ".")?;
 
     let mut res = HashMap::new();
     res.insert("func_output", func_output.stdout);
