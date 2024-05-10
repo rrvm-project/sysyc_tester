@@ -80,8 +80,14 @@ async fn test(
     )?;
 
     run_command(
-        "make",
-        &[],
+        "gcc",
+        &["-march=rv64gc", "-mabi=lp64d", "-xc++", "-O2", "-c", "-o", "sylib.o", "sylib.cc"],
+        &format!("./{commit_hash}/project-eval/runtime"),
+    )?;
+
+    run_command(
+        "ar",
+        &["rcs", "libsysy.a", "sylib.o"],
         &format!("./{commit_hash}/project-eval/runtime"),
     )?;
 
