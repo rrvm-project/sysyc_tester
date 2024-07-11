@@ -1,20 +1,22 @@
-use std::{collections::HashMap, convert::Infallible, path::PathBuf, time::Duration};
+use std::{convert::Infallible, path::PathBuf, process::Stdio, time::Duration};
 
 use actix_web::{
     get,
     middleware::Logger,
     post,
     web::{self, Data},
-    App, HttpResponse, HttpServer, Responder,
+    App, HttpServer, Responder,
 };
-use actix_web_lab::sse;
+use actix_web_lab::sse::{self, Event, Sse};
 use clap::Parser;
 use config::{read_config, Config};
+use serde::Deserialize;
+use tokio::process::Command;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use futures::stream::{self, Stream, StreamExt};
 use log::info;
-use utils::run_command;
 
 mod config;
-mod utils;
 
 #[derive(Parser, Clone)]
 #[clap(author="cyh2004", version="0.1.0", about="", long_about=None)]
@@ -44,72 +46,69 @@ async fn from_stream() -> impl Responder {
     sse::Sse::from_stream(event_stream).with_keep_alive(Duration::from_secs(5))
 }
 
-#[post("/test/{branch}/{commit_hash}")]
+#[derive(Deserialize)]
+struct MyData {
+    branch: String,
+    commit_id: String,
+}
+
+#[post("/test")]
 async fn test(
-    path_args: web::Path<(String, String)>,
+    data: web::Json<MyData>,
     state: web::Data<AppState>,
 ) -> std::io::Result<impl Responder> {
-    let (branch, commit_hash) = path_args.into_inner();
+    let data = data.into_inner(); 
+    let (branch, commit_hash) = (data.branch, data.commit_id);
     info!("branch: {}, commit_hash: {}", branch, commit_hash);
-
+    
     let args = [
-        "clone",
-        "-b",
-        &format!("{branch}"),
         &state.config.repo,
+        &format!("{branch}"),
         &format!("./{commit_hash}"),
     ];
-    run_command("git", &args, ".")?;
 
-    run_command(
-        "git",
-        &["checkout", &commit_hash],
-        &format!("./{commit_hash}"),
-    )?;
+    let stream = command_output_stream(&args);
 
-    run_command(
-        "git",
-        &["submodule", "update", "--init", "--recursive"],
-        &format!("./{commit_hash}"),
-    )?;
+    let sse_stream = stream.map(|line| {
+        Event::Data(sse::Data::new(line))
+    }).map(Ok::<_, Infallible>); 
+        
+    let stream_response = Sse::from_stream(sse_stream).with_keep_alive(Duration::from_secs(1));
 
-    run_command(
-        "cargo",
-        &["build", "--workspace", "--release"],
-        &format!("./{commit_hash}"),
-    )?;
+    // Spawn a task to wait for the child process to exit
+    // tokio::spawn(async move {
+    //     cmd.wait().await.unwrap();
+    // });
 
-    run_command(
-        "gcc",
-        &["-march=rv64gc", "-mabi=lp64d", "-xc++", "-O2", "-c", "-o", "sylib.o", "sylib.cc"],
-        &format!("./{commit_hash}/project-eval/runtime"),
-    )?;
+    Ok(stream_response)
+}
 
-    run_command(
-        "ar",
-        &["rcs", "libsysy.a", "sylib.o"],
-        &format!("./{commit_hash}/project-eval/runtime"),
-    )?;
+// 异步函数，创建子进程并将其输出转换为 Stream
+fn command_output_stream(args: &[&String]) -> impl Stream<Item = String> {
+    // 启动子进程
+    let mut child = Command::new("./test.sh")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn child process");
 
-    let func_output = run_command(
-        "python3",
-        &["test.py", "-t", "./testcases/functional", "-b"],
-        &format!("./{commit_hash}/project-eval"),
-    )?;
+    // 获取子进程的标准输出
+    let stdout = child.stderr.take().expect("Failed to open stdout");
 
-    let perf_output = run_command(
-        "python3",
-        &["test.py", "-t", "./testcases/performance", "-b"],
-        &format!("./{commit_hash}/project-eval"),
-    )?;
+    // 将标准输出转换为 BufReader
+    let reader = BufReader::new(stdout);
 
-    run_command("rm", &["-rf", &format!("./{commit_hash}")], ".")?;
+    // 将 BufReader 转换为一个异步 Stream
+    let lines = reader.lines();
 
-    let mut res = HashMap::new();
-    res.insert("func_output", func_output.stdout);
-    res.insert("perf_output", perf_output.stdout);
-
-    Ok(HttpResponse::Ok().json(&res))
+    // 创建一个 Stream 来处理子进程的输出
+    stream::unfold(lines, |mut lines| async {
+        match lines.next_line().await {
+            Ok(Some(line)) => Some((line, lines)),
+            _ => None,
+        }
+    })
 }
 
 #[actix_web::main]
