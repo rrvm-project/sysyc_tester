@@ -34,11 +34,11 @@ gcc -march=rv64gc -mabi=lp64d -xc++ -O2 -c -o sylib.o sylib.cc
 ar rcs libsysy.a sylib.o
 
 # Run functional tests
-cd ../../ || exit
-python3 test.py -t ./testcases/functional -b
+cd ../ || exit
+python3 test.py -t ./testcases/functional -b -c gcc --on_riscv
 
 # Run performance tests
-python3 test.py -t ./testcases/performance -b
+python3 test.py -t ./testcases/performance -b -c gcc --on_riscv
 
 # Clean up by removing the cloned repository directory
 cd ../ || exit
