@@ -13,8 +13,9 @@ use config::{read_config, Config};
 use serde::Deserialize;
 use tokio::process::Command;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use futures::stream::{self, Stream, StreamExt};
+use futures::stream::{self, Stream};
 use log::info;
+use tokio_stream::StreamExt;
 
 mod config;
 
@@ -93,22 +94,34 @@ fn command_output_stream(args: &[&String]) -> impl Stream<Item = String> {
         .spawn()
         .expect("Failed to spawn child process");
 
+    // 获取子进程的错误输出
+    let stderr = child.stderr.take().expect("Failed to open stderr");
     // 获取子进程的标准输出
-    let stdout = child.stderr.take().expect("Failed to open stdout");
+    let stdout = child.stdout.take().expect("Failed to open stdout");
 
     // 将标准输出转换为 BufReader
-    let reader = BufReader::new(stdout);
+    let reader = BufReader::new(stderr);
+    let reader2 = BufReader::new(stdout);
 
     // 将 BufReader 转换为一个异步 Stream
     let lines = reader.lines();
+    let lines2 = reader2.lines();
 
     // 创建一个 Stream 来处理子进程的输出
-    stream::unfold(lines, |mut lines| async {
+    let stream1 = stream::unfold(lines, |mut lines| async {
         match lines.next_line().await {
             Ok(Some(line)) => Some((line, lines)),
             _ => None,
         }
-    })
+    });
+    let stream2 = stream::unfold(lines2, |mut lines| async {
+        match lines.next_line().await {
+            Ok(Some(line)) => Some((line, lines)),
+            _ => None,
+        }
+    });
+
+    stream1.merge(stream2)
 }
 
 #[actix_web::main]
