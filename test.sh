@@ -35,11 +35,11 @@ ar rcs libsysy.a sylib.o
 
 # Run functional tests
 cd ../ || exit
-python3 test.py -t ./testcases/functional -b -c gcc --on_riscv 1>&2
+python3 test.py -t ./testcases/functional -b -c gcc -r cmmc --on_riscv 
 
 # Run performance tests
-python3 test.py -t ./testcases/performance -b -c gcc --on_riscv 1>&2 
+python3 test.py -t ./testcases/performance -b -c gcc -r cmmc --on_riscv  
 
 # Clean up by removing the cloned repository directory
-cd ../ || exit
+cd ../../ || exit
 rm -rf "./$commit_hash"

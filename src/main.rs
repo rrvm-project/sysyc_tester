@@ -65,7 +65,7 @@ async fn test(
     let args = [
         &state.config.repo,
         &format!("{branch}"),
-        &format!("./{commit_hash}"),
+        &format!("{commit_hash}"),
     ];
 
     let stream = command_output_stream(&args);
