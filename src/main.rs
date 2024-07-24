@@ -10,11 +10,11 @@ use actix_web::{
 use actix_web_lab::sse::{self, Event, Sse};
 use clap::Parser;
 use config::{read_config, Config};
-use serde::Deserialize;
-use tokio::process::Command;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use futures::stream::{self, Stream};
 use log::info;
+use serde::Deserialize;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
 use tokio_stream::StreamExt;
 
 mod config;
@@ -35,16 +35,7 @@ pub struct AppState {
 
 #[get("/hello/{name}")]
 async fn greet(name: web::Path<String>) -> impl Responder {
-    // log::info!("Greeted {}", name);
     format!("Hello, {}!", name)
-}
-
-#[get("/from-stream")]
-async fn from_stream() -> impl Responder {
-    let event_stream =
-        futures_util::stream::iter([Ok::<_, Infallible>(sse::Event::Data(sse::Data::new("foo")))]);
-
-    sse::Sse::from_stream(event_stream).with_keep_alive(Duration::from_secs(5))
 }
 
 #[derive(Deserialize)]
@@ -58,10 +49,10 @@ async fn test(
     data: web::Json<MyData>,
     state: web::Data<AppState>,
 ) -> std::io::Result<impl Responder> {
-    let data = data.into_inner(); 
+    let data = data.into_inner();
     let (branch, commit_hash) = (data.branch, data.commit_id);
     info!("branch: {}, commit_hash: {}", branch, commit_hash);
-    
+
     let args = [
         &state.config.repo,
         &format!("{branch}"),
@@ -70,16 +61,11 @@ async fn test(
 
     let stream = command_output_stream(&args);
 
-    let sse_stream = stream.map(|line| {
-        Event::Data(sse::Data::new(line))
-    }).map(Ok::<_, Infallible>); 
-        
-    let stream_response = Sse::from_stream(sse_stream).with_keep_alive(Duration::from_secs(1));
+    let sse_stream = stream
+        .map(|line| Event::Data(sse::Data::new(line)))
+        .map(Ok::<_, Infallible>);
 
-    // Spawn a task to wait for the child process to exit
-    // tokio::spawn(async move {
-    //     cmd.wait().await.unwrap();
-    // });
+    let stream_response = Sse::from_stream(sse_stream).with_keep_alive(Duration::from_secs(1));
 
     Ok(stream_response)
 }
@@ -100,21 +86,17 @@ fn command_output_stream(args: &[&String]) -> impl Stream<Item = String> {
     let stdout = child.stdout.take().expect("Failed to open stdout");
 
     // 将标准输出转换为 BufReader
-    let reader = BufReader::new(stderr);
-    let reader2 = BufReader::new(stdout);
+    let stderr_lines = BufReader::new(stderr).lines();
+    let stdout_lines = BufReader::new(stdout).lines();
 
-    // 将 BufReader 转换为一个异步 Stream
-    let lines = reader.lines();
-    let lines2 = reader2.lines();
-
-    // 创建一个 Stream 来处理子进程的输出
-    let stream1 = stream::unfold(lines, |mut lines| async {
+    // 将 BufReader 的 Lines 转换为异步 Stream
+    let stream1 = stream::unfold(stderr_lines, |mut lines| async {
         match lines.next_line().await {
             Ok(Some(line)) => Some((line, lines)),
             _ => None,
         }
     });
-    let stream2 = stream::unfold(lines2, |mut lines| async {
+    let stream2 = stream::unfold(stdout_lines, |mut lines| async {
         match lines.next_line().await {
             Ok(Some(line)) => Some((line, lines)),
             _ => None,
@@ -137,7 +119,6 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(state.clone()))
             .wrap(Logger::default())
             .service(greet)
-            .service(from_stream)
             .service(test)
     })
     .bind(("0.0.0.0", 12345))?
