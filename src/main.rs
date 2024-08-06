@@ -156,17 +156,17 @@ fn get_answer(file: &str) -> (Vec<String>, i32) {
 #[derive(Serialize, Deserialize)]
 struct RunResult{
     code: u32,
-    time: Option<f64>,
+    time: f64,
 }
 
 #[post("/run")]
 async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
     let compile_status = Command::new("gcc")
-        .args(&["-march=rv64gc -mabi=lp64d", &data.assembly, "runtime/libsysy.a", "-o", &data.executable])
+        .args(&["-march=rv64gc", "-mabi=lp64d", &data.assembly, "runtime/libsysy.a", "-o", &data.executable])
         .status()
         .await?;
     if !compile_status.success() {
-        return Ok(HttpResponse::BadRequest().json(RunResult{ code: 1, time: None })); // 1: Linker error 
+        return Ok(HttpResponse::BadRequest().json(RunResult{ code: 1, time: 0.0 })); // 1: Linker error 
     }
     let (answer_content, answer_exitcode) = get_answer(&data.answer);    
     let start_time = Instant::now();
@@ -186,11 +186,11 @@ async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
     if command.code() != Some(answer_exitcode)
         || output_content != answer_content
     {
-        return Ok(HttpResponse::BadRequest().json(RunResult{ code: 2, time: None })); // 2: Wrong answer
+        return Ok(HttpResponse::BadRequest().json(RunResult{ code: 2, time: 0.0 })); // 2: Wrong answer
     }
 
     let duration = end_time.duration_since(start_time).as_secs_f64() * 1000.0;
-    Ok(HttpResponse::Ok().json(RunResult{ code: 0, time: Some(duration) })) // 0: Success
+    Ok(HttpResponse::Ok().json(RunResult{ code: 0, time: duration })) // 0: Success
 }
 
 
@@ -209,6 +209,7 @@ async fn main() -> std::io::Result<()> {
             .service(greet)
             .service(test)
             .service(upload)
+            .service(run)
     })
     .bind(("0.0.0.0", 12345))?
     .run()
