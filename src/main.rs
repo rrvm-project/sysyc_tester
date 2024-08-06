@@ -198,6 +198,21 @@ async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
     Ok(HttpResponse::Ok().json(RunResult{ code: 0, time: duration })) // 0: Success
 }
 
+#[post("/compile")]
+async fn compile(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
+    let base_name = "uploaded_files/".to_string() + &data.folder + "/" + &data.name;
+    let assembly =  base_name.clone() + "-gcc.s";
+    let source = base_name.clone() + ".sy";
+    let compile_status = Command::new("gcc")
+        .args(&["-xc++", "-O2", "-S", "-march=rv64gc", "-mabi=lp64d", "-include", "runtime/sylib.h", &source, "-o", &assembly])
+        .status()
+        .await?;
+    if !compile_status.success() {
+        return Ok(HttpResponse::BadRequest().json(RunResult{ code: 3, time: 0.0 })); // 3: Gcc error 
+    }
+    Ok(HttpResponse::Ok().json(RunResult{ code: 0, time: 0.0 })) // 0: Success
+}
+
 #[post("/clean")]
 async fn clean(query: web::Query<HashMap<String, String>>) -> Result<impl Responder, Error> {
     let folder_name = query.get("folder").ok_or_else(|| {
@@ -225,6 +240,7 @@ async fn main() -> std::io::Result<()> {
             .service(test)
             .service(upload)
             .service(run)
+            .service(compile)
             .service(clean)
     })
     .bind(("0.0.0.0", 12345))?
