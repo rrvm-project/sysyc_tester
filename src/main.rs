@@ -178,8 +178,8 @@ async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
 
     let command = Command::new(executable)
         .stdin(if let Ok(v) = File::open(input) { Stdio::from(v) } else { Stdio::null() })
-        .stdout(Stdio::from(File::open(output.clone()).unwrap()))
-        .stderr(Stdio::from(File::open(outerr).unwrap()))
+        .stdout(Stdio::from(File::create(output.clone()).unwrap()))
+        .stderr(Stdio::from(File::create(outerr).unwrap()))
         .status().await?;
 
     let end_time = Instant::now();
@@ -196,6 +196,16 @@ async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
 
     let duration = end_time.duration_since(start_time).as_secs_f64() * 1000.0;
     Ok(HttpResponse::Ok().json(RunResult{ code: 0, time: duration })) // 0: Success
+}
+
+#[post("/clean")]
+async fn clean(query: web::Query<HashMap<String, String>>) -> Result<impl Responder, Error> {
+    let folder_name = query.get("folder").ok_or_else(|| {
+        actix_web::error::ErrorBadRequest("Folder name is missing")
+    })?;
+    let folder_path = format!("./uploaded_files/{}", sanitize(folder_name.as_str()));
+    fs::remove_dir_all(&folder_path)?;
+    Ok(HttpResponse::Ok().body("Folder cleaned"))
 }
 
 
@@ -215,6 +225,7 @@ async fn main() -> std::io::Result<()> {
             .service(test)
             .service(upload)
             .service(run)
+            .service(clean)
     })
     .bind(("0.0.0.0", 12345))?
     .run()
