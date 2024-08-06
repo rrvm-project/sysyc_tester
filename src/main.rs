@@ -134,12 +134,9 @@ async fn upload(mut payload: Multipart, query: web::Query<HashMap<String, String
 
 #[derive(Deserialize)]
 struct FilesToRun {
-    assembly: String,
-    executable: String,
-    answer: String,
-    input: String,
-    output: String,
-    outerr: String,
+    folder: String,
+    name: String,
+    name_without_suffix: String,
 }
 
 fn get_answer(file: &str) -> (Vec<String>, i32) {
@@ -161,24 +158,32 @@ struct RunResult{
 
 #[post("/run")]
 async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
+    let base_name = "uploaded_files/".to_string() + &data.folder + "/" + &data.name;
+    let base_name_without_suffix = "uploaded_files/".to_string() + &data.folder + "/" + &data.name_without_suffix;
+    let assembly =  base_name.clone() + ".s";
+    let executable = base_name.clone() + ".exec";
+    let output = base_name.clone() + ".stdout";
+    let outerr = base_name.clone() + ".stderr";
+    let answer = base_name_without_suffix.clone() + ".out";
+    let input = base_name_without_suffix.clone() + ".in";
     let compile_status = Command::new("gcc")
-        .args(&["-march=rv64gc", "-mabi=lp64d", &data.assembly, "runtime/libsysy.a", "-o", &data.executable])
+        .args(&["-march=rv64gc", "-mabi=lp64d", &assembly, "runtime/libsysy.a", "-o", &executable])
         .status()
         .await?;
     if !compile_status.success() {
         return Ok(HttpResponse::BadRequest().json(RunResult{ code: 1, time: 0.0 })); // 1: Linker error 
     }
-    let (answer_content, answer_exitcode) = get_answer(&data.answer);    
+    let (answer_content, answer_exitcode) = get_answer(&answer);    
     let start_time = Instant::now();
 
-    let command = Command::new(&data.executable)
-        .stdin(Stdio::from(File::open(&data.input).unwrap()))
-        .stdout(Stdio::from(File::open(&data.output).unwrap()))
-        .stderr(Stdio::from(File::open(&data.outerr).unwrap()))
+    let command = Command::new(executable)
+        .stdin(if let Ok(v) = File::open(input) { Stdio::from(v) } else { Stdio::null() })
+        .stdout(Stdio::from(File::open(output.clone()).unwrap()))
+        .stderr(Stdio::from(File::open(outerr).unwrap()))
         .status().await?;
 
     let end_time = Instant::now();
-    let output_content: Vec<String> = std::io::BufReader::new(File::open(&data.output).unwrap())
+    let output_content: Vec<String> = std::io::BufReader::new(File::open(output.clone()).unwrap())
         .lines()
         .map(|line| line.unwrap())
         .collect();
