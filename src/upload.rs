@@ -2,17 +2,18 @@
 use std::{collections::HashMap, fs, io::Write};
 
 use actix_multipart::Multipart;
-use actix_web::{
-    post, web, Error, HttpResponse, Responder
-};
+use actix_web::{post, web, Error, HttpResponse, Responder};
 use sanitize_filename::sanitize;
 use tokio_stream::StreamExt;
 
 #[post("/upload")]
-pub async fn upload(mut payload: Multipart, query: web::Query<HashMap<String, String>>) -> Result<impl Responder, Error> {
-    let folder_name = query.get("folder").ok_or_else(|| {
-        actix_web::error::ErrorBadRequest("Folder name is missing")
-    })?;
+pub async fn upload(
+    mut payload: Multipart,
+    query: web::Query<HashMap<String, String>>,
+) -> Result<impl Responder, Error> {
+    let folder_name = query
+        .get("folder")
+        .ok_or_else(|| actix_web::error::ErrorBadRequest("Folder name is missing"))?;
     while let Some(mut field) = payload.try_next().await? {
         let folder_path = format!("./uploaded_files/{}", sanitize(folder_name.as_str()));
 

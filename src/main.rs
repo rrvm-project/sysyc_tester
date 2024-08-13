@@ -1,17 +1,20 @@
 use std::path::PathBuf;
 
 use actix_web::{
-    get, middleware::Logger, web::{self, Data}, App, HttpServer, Responder
+    get,
+    middleware::Logger,
+    web::{self, Data},
+    App, HttpServer, Responder,
 };
 use clap::Parser;
 use config::{read_config, Config};
 
+mod clean;
+mod compile;
 mod config;
 mod run;
 mod test;
 mod upload;
-mod clean;
-mod compile;
 
 #[derive(Parser, Clone)]
 #[clap(author="cyh2004", version="0.1.0", about="", long_about=None)]
