@@ -20,6 +20,7 @@ pub struct FilesToRun {
 pub struct RunResult {
     pub code: u32,
     pub time: f64,
+    pub msg: String,
 }
 
 fn get_answer(file: &str) -> (Vec<String>, i32) {
@@ -81,7 +82,7 @@ pub async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
         .status()
         .await?;
     if !compile_status.success() {
-        return Ok(HttpResponse::BadRequest().json(RunResult { code: 1, time: 0.0 }));
+        return Ok(HttpResponse::BadRequest().json(RunResult { code: 1, time: 0.0 , msg: "Linker Error".into()}));
         // 1: Linker error
     }
     let (answer_content, answer_exitcode) = get_answer(&answer);
@@ -110,8 +111,15 @@ pub async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
         .map(|line| line.unwrap())
         .collect();
 
-    if command.code() != Some(answer_exitcode) || output_content != answer_content {
-        return Ok(HttpResponse::BadRequest().json(RunResult { code: 2, time: 0.0 }));
+    let exit_code = command.code();
+
+    if exit_code != Some(answer_exitcode) || output_content != answer_content {
+        let reuslt = format!("WA: exit code {:?}, first 10 lines of output \n{}", exit_code, 
+        // output_content.into_iter().take(10).collect().join("\n")
+        output_content.into_iter().take(10).collect::<Vec<_>>().join("\n")
+    );
+        
+        return Ok(HttpResponse::BadRequest().json(RunResult { code: 2, time: 0.0 , msg: reuslt}));
         // 2: Wrong answer
     }
 
@@ -119,12 +127,14 @@ pub async fn run(data: web::Json<FilesToRun>) -> Result<impl Responder, Error> {
         Ok(HttpResponse::Ok().json(RunResult {
             code: 0,
             time: time as f64 * 0.001,
+            msg : "AC inline timer".into()
         }))
     } else {
         let duration = end_time.duration_since(start_time).as_secs_f64() * 1000.0;
         Ok(HttpResponse::Ok().json(RunResult {
             code: 0,
             time: duration,
+            msg: "AC raw timer".into()
         })) // 0: Success
     }
 }

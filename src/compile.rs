@@ -1,5 +1,6 @@
 // compile 接口，用于将源代码编译成汇编代码，在这之前应当通过 upload 上传源代码
 use actix_web::{post, web, Error, HttpResponse, Responder};
+use serde::de::IntoDeserializer;
 use tokio::process::Command;
 
 use crate::run::{FilesToRun, RunResult};
@@ -25,8 +26,8 @@ pub async fn compile(data: web::Json<FilesToRun>) -> Result<impl Responder, Erro
         .status()
         .await?;
     if !compile_status.success() {
-        return Ok(HttpResponse::BadRequest().json(RunResult { code: 3, time: 0.0 }));
+        return Ok(HttpResponse::BadRequest().json(RunResult { code: 3, time: 0.0 , msg : "Compile failed".into()}));
         // 3: Gcc error
     }
-    Ok(HttpResponse::Ok().json(RunResult { code: 0, time: 0.0 })) // 0: Success
+    Ok(HttpResponse::Ok().json(RunResult { code: 0, time: 0.0 , msg : "Compile Success".into()})) // 0: Success
 }
